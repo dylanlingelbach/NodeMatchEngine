@@ -2,9 +2,6 @@ var createEngine = function createEngine() {
 	var util = require('util'),
 		EventEmitter = require('events').EventEmitter;
 
-	var Engine = function(){};
-	util.inherits(Engine, EventEmitter);
-
 	var getNewId = function getNewId() {
 		var orderId = 0;
 		return function() { 
@@ -13,87 +10,154 @@ var createEngine = function createEngine() {
 		}
 	}();
 
-	Engine.prototype.bids = [];
-	Engine.prototype.offers = [];
-	Engine.prototype.orders = {};
+	var adjustQuantity = function(order, newQuantity) {
+		order.quantity = Math.max(0, newQuantity);
+		if (order.quantity === 0) {
+			order.status = "Complete";
+		}
+	};
+
+	var Book = function () {
+		this.levels = [];
+	};
+
+	Book.prototype.addOrder = function(order) {
+		if (order.quantity <= 0)
+			return;
+		var levelIndex = 0;
+		var level = this.levels[0];
+
+		var comp = order.isBuy ? 
+			function(price) { return order.price > price; } 
+			: 
+			function(price) { return order.price < price; }
+
+		while (level && comp(level.price))
+		{
+			levelIndex = levelIndex + 1;
+			level = this.levels[levelIndex];
+		}
+
+		if (!level || level.price !== order.price)
+		{
+			level = [];
+			level.price = order.price;
+			this.levels.splice(levelIndex, 0, level);
+		}
+		level.push(order);
+	};
+
+	Book.prototype.removeOrder = function(order) {
+		for (var l = 0; l < this.levels.length; l++)
+		{
+			var level = this.levels[l];
+			if (level.price === order.price)
+			{
+				for (var i = 0; i < level.length; i++)
+				{
+					if (level[i].id === order.id)
+					{
+						level.splice(i, 1);
+						if (level.length === 0)
+						{
+							this.levels.splice(i, 1);
+						}
+						return true;
+					}
+				}
+			}
+		}
+
+		return false;
+	};
+
+	Book.prototype.findMatches = function(order) {
+		var comp = order.isBuy ? 
+			function(price) { return order.price >= price; } 
+			: 
+			function(price) { return order.price <= price; }
+
+		var level = this.levels[0];
+		var remainingQuantity = order.quantity;
+		var matches = [];
+		for (var i = 0; i < this.levels.length; i++)
+		{
+			var level = this.levels[i];
+			if (!comp(level.price))
+			{
+				break;
+			}
+
+			for (var j = 0; j < level.length && remainingQuantity > 0; j++)
+			{
+				var restingOrder = level[j];
+				matches.unshift(restingOrder);
+				remainingQuantity = remainingQuantity - restingOrder.quantity;
+			}
+		}
+
+		return matches;
+	};
+
+	var Engine = function(){
+		this.bids = new Book();
+		this.offers = new Book();
+		this.orders = {};
+	};
+	util.inherits(Engine, EventEmitter);
 
 	Engine.prototype.submitOrder = function(order) {
 		if (order.quantity === 0 ) {
 			throw new Error("Order must have non-zero quantity");
 		}
 
-		var internalOrder = {
-			id: 		getNewId(),
-			price: 		order.price,
-			quantity: 	Math.abs(order.quantity),
-			status:  	"Working"
-		};
-
-		this.orders[internalOrder.id] = internalOrder;
-
 		var isBuy = order.quantity > 0;
 		var book = isBuy ? this.bids : this.offers;
 		var otherBook = isBuy ? this.offers : this.bids;
-		var comparison = isBuy ? 
-			function(price) { return internalOrder.price >= price; } 
-			: 
-			function(price) { return internalOrder.price <= price; }
 
-		var level = otherBook[0];
-		while (level && internalOrder.quantity > 0 && comparison(level[0].price))
+		var aggressiveOrder = {
+			id: 		getNewId(),
+			price: 		order.price,
+			quantity: 	Math.abs(order.quantity),
+			status:  	"Working",
+			isBuy: 		isBuy
+		};
+
+		var matches = otherBook.findMatches(aggressiveOrder);
+
+		this.orders[aggressiveOrder.id] = aggressiveOrder;
+
+		for (var i = 0; i < matches.length; i++)
 		{
-			var i = 0;
-			for (;i < level.length; i++)
+			var restingOrder = matches[i];
+			var matchQuantity = Math.min(aggressiveOrder.quantity, restingOrder.quantity);
+			adjustQuantity(restingOrder, restingOrder.quantity - matchQuantity);
+			adjustQuantity(aggressiveOrder, aggressiveOrder.quantity - matchQuantity);
+
+			this.emit('match', restingOrder, aggressiveOrder, restingOrder.price, matchQuantity);
+
+			if (restingOrder.quantity === 0)
 			{
-				var order = level[i];
-				var quantity = Math.min(internalOrder.quantity, order.quantity);
-				var adjustQuantity = function(order, quantity) {
-					order.quantity = order.quantity - quantity;
-					if (order.quantity === 0)
-					{
-						order.status = "Complete";
-					}
-				};
-				adjustQuantity(internalOrder, quantity);
-				adjustQuantity(order, quantity);
-				this.emit("match", order, internalOrder, order.price, quantity);
-				if (internalOrder.quantity == 0)
-					break;
+				otherBook.removeOrder(restingOrder);
 			}
-			level.splice(0, i);
-			if (level.length === 0)
-			{
-				otherBook.splice(0, 1);
-			}
-			level = otherBook[0];
 		}
-
-		var insertComparison = isBuy ? 
-			function(price) { return internalOrder.price > price; } 
-			: 
-			function(price) { return internalOrder.price < price; }
-
-		var levelIndex = 0;
-		var level = book[0];
-		while (level && insertComparison(level[0].price))
+		
+		if (aggressiveOrder.quantity > 0)
 		{
-			levelIndex = levelIndex + 1;
-			level = book[levelIndex];
+			book.addOrder(aggressiveOrder);
 		}
 
-		if (!level)
-		{
-			book[levelIndex] = level = [];
-		}
-		level.push(internalOrder);
-
-
-		return internalOrder.id;
+		return aggressiveOrder.id;
 	};
 
 	Engine.prototype.getStatus = function(orderId) {
 		var order = this.orders[orderId];
-		return order ? order.status : undefined;
+		return order ? 
+		{
+			status: order.status,
+			workingQuantity: order.quantity
+		}
+		: undefined;
 	};
 
 	Engine.prototype.cancelOrder = function(orderId) {
@@ -107,7 +171,8 @@ var createEngine = function createEngine() {
 		{
 			return false;
 		}
-		// TODO: Remove order from book
+		var book = order.isBuy ? this.bids : this.offers;
+		book.removeOrder(order);
 		order.status = "Cancelled";
 
 		return true;
