@@ -21,6 +21,10 @@ var createEngine = function createEngine() {
 		this.levels = [];
 	};
 
+	Book.prototype.map = function(fun) {
+		return this.levels.map(fun);
+	};
+
 	Book.prototype.addOrder = function(order) {
 		if (order.quantity <= 0)
 			return;
@@ -28,9 +32,9 @@ var createEngine = function createEngine() {
 		var level = this.levels[0];
 
 		var comp = order.isBuy ? 
-			function(price) { return order.price > price; } 
+			function(price) { return order.price < price; } 
 			: 
-			function(price) { return order.price < price; }
+			function(price) { return order.price > price; }
 
 		while (level && comp(level.price))
 		{
@@ -91,7 +95,7 @@ var createEngine = function createEngine() {
 			for (var j = 0; j < level.length && remainingQuantity > 0; j++)
 			{
 				var restingOrder = level[j];
-				matches.unshift(restingOrder);
+				matches.push(restingOrder);
 				remainingQuantity = remainingQuantity - restingOrder.quantity;
 			}
 		}
@@ -177,6 +181,25 @@ var createEngine = function createEngine() {
 
 		return true;
 	};
+
+	Engine.prototype.getMarketData = function() {
+		var levelReduce = function(order1, order2) { 
+			return { 
+				quantity: 	order1.quantity + order2.quantity, 
+				price: 		order1.price}
+			};
+		var levelConverter = function(level) { return level.reduce(levelReduce) };
+
+		debugger;
+		var bids = this.bids.map(levelConverter);
+		var offers = this.offers.map(levelConverter);
+
+		return {
+			bids: 	bids,
+			offers: offers
+		};
+	};
+
 	return new Engine();
 };
 

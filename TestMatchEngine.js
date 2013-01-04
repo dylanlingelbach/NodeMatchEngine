@@ -27,7 +27,6 @@ tests.zeroQuantityOrder = function() {
 tests.canCheckOrderStatus = function() {
 	var engine = matchEngine.createEngine();
 	var id = engine.submitOrder({quantity: "3", price: "2.5"});
-	debugger;
 	var status = engine.getStatus(id);
 	assert.ok(status, "order status returned");
 	assert.equal(status.status, "Working");
@@ -114,7 +113,7 @@ tests.matchAfterCancelRaisesEvent = function() {
 	var sellStatus = engine.getStatus(sellId);
 	assert.equal(sellStatus.status, "Complete");
 };
-tests.aggressiveSweepRaisesEvents = function() {
+tests.sweepRaisesEvents = function() {
 	var engine = matchEngine.createEngine();
 	var buyId1 = engine.submitOrder({quantity: "1", price: "2.7"});
 	var buyId2 = engine.submitOrder({quantity: "1", price: "2.6"});
@@ -123,13 +122,47 @@ tests.aggressiveSweepRaisesEvents = function() {
 	var prices = [2.7, 2.6, 2.5];
 	var quantities = [1, 1, 1];
 	var matchCount = 0;
-	engine.on("match", function(restingOrder, aggressiveOrder, price, quantity) {
+	engine.on("match", function(restingOrder, aggressiveOrder, matchPrice, matchQuantity) {
 		var id = restingIds[matchCount];
 		var price = prices[matchCount];
 		var quantity = quantities[matchCount];
-		assert.equal(restingOrder.id, id, "Resting order should be buy order");
-		assert.equal(price, price, "Prices should match");
-		assert.equal(quantity, quantity, "Quantities should match");
+		assert.equal(restingOrder.id, id, "Resting order should match expected");
+		assert.equal(price, matchPrice, "Prices should match");
+		assert.equal(quantity, matchQuantity, "Quantities should match");
+
+		matchCount = matchCount + 1;
+	});
+
+	debugger;
+	var sellId = engine.submitOrder({quantity: "-3", price: "2.5"});
+
+	assert.equal(matchCount, 3, "Three matches should have occurred.");
+
+	var buyStatus = engine.getStatus(buyId1);
+	assert.equal(buyStatus.status, "Complete");
+	buyStatus = engine.getStatus(buyId2);
+	assert.equal(buyStatus.status, "Complete");
+	buyStatus = engine.getStatus(buyId3);
+	assert.equal(buyStatus.status, "Complete");
+	var sellStatus = engine.getStatus(sellId);
+	assert.equal(sellStatus.status, "Complete");
+};
+tests.sweepRaisesEventsWithAscendingBuys = function() {
+	var engine = matchEngine.createEngine();
+	var buyId1 = engine.submitOrder({quantity: "1", price: "2.5"});
+	var buyId2 = engine.submitOrder({quantity: "1", price: "2.6"});
+	var buyId3 = engine.submitOrder({quantity: "1", price: "2.7"});
+	var restingIds = [buyId3, buyId2, buyId1];
+	var prices = [2.7, 2.6, 2.5];
+	var quantities = [1, 1, 1];
+	var matchCount = 0;
+	engine.on("match", function(restingOrder, aggressiveOrder, matchPrice, matchQuantity) {
+		var id = restingIds[matchCount];
+		var price = prices[matchCount];
+		var quantity = quantities[matchCount];
+		assert.equal(restingOrder.id, id, "Resting order should match expected");
+		assert.equal(price, matchPrice, "Prices should match");
+		assert.equal(quantity, matchQuantity, "Quantities should match");
 
 		matchCount = matchCount + 1;
 	});
@@ -151,16 +184,16 @@ tests.partialsRaiseEvents = function() {
 	var engine = matchEngine.createEngine();
 	var sellId = engine.submitOrder({quantity: "-3", price: "2.5"});
 	var restingIds = [sellId, sellId, sellId];
-	var prices = [2.7, 2.6, 2.5];
+	var prices = [2.5, 2.5, 2.5];
 	var quantities = [1, 1, 1];
 	var matchCount = 0;
-	engine.on("match", function(restingOrder, aggressiveOrder, price, quantity) {
+	engine.on("match", function(restingOrder, aggressiveOrder, matchPrice, matchQuantity) {
 		var id = restingIds[matchCount];
 		var price = prices[matchCount];
 		var quantity = quantities[matchCount];
 		assert.equal(restingOrder.id, id, "Resting order should match expected");
-		assert.equal(price, price, "Prices should match");
-		assert.equal(quantity, quantity, "Quantities should match");
+		assert.equal(price, matchPrice, "Prices should match");
+		assert.equal(quantity, matchQuantity, "Quantities should match");
 
 		matchCount = matchCount + 1;
 	});
@@ -217,6 +250,50 @@ tests.resubmitAfterMatchDoesNotMatch = function() {
 	var sellStatus = engine.getStatus(sellId);
 	assert.equal(sellStatus.status, "Working");
 };
+tests.getMarketData = function() {
+	var engine = matchEngine.createEngine();
+	engine.submitOrder({quantity: "3", price: "2.5"});
+	engine.submitOrder({quantity: "3", price: "2.5"});
+	engine.submitOrder({quantity: "-3", price: "2.6"});
+
+	var marketData = engine.getMarketData();
+	var bids = marketData.bids;
+	var offers = marketData.offers;
+
+	assert.equal(1, bids.length);
+	assert.equal(1, offers.length);
+
+	assert.equal(6, bids[0].quantity);
+	assert.equal(3, offers[0].quantity);
+
+	assert.equal(2.5, bids[0].price);
+	assert.equal(2.6, offers[0].price);
+};
+tests.multipleLevelsOfMarketData = function() {
+	var engine = matchEngine.createEngine();
+	engine.submitOrder({quantity: "3", price: "2.5"});
+	engine.submitOrder({quantity: "3", price: "2.5"});
+	engine.submitOrder({quantity: "3", price: "2.5"});
+	debugger;
+	engine.submitOrder({quantity: "2", price: "2.4"});
+	engine.submitOrder({quantity: "-3", price: "2.6"});
+
+	var marketData = engine.getMarketData();
+	var bids = marketData.bids;
+	var offers = marketData.offers;
+
+	assert.equal(2, bids.length);
+	assert.equal(1, offers.length);
+
+	assert.equal(9, bids[0].quantity);
+	assert.equal(2, bids[1].quantity);
+	assert.equal(3, offers[0].quantity);
+
+	assert.equal(2.5, bids[0].price);
+	assert.equal(2.4, bids[1].price);
+	assert.equal(2.6, offers[0].price);
+};
+
 
 for (var test in tests) {
 	if (tests.hasOwnProperty(test) && (typeof tests[test] == 'function')) {
