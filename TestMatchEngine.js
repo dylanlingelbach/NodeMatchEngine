@@ -133,7 +133,6 @@ tests.sweepRaisesEvents = function() {
 		matchCount = matchCount + 1;
 	});
 
-	debugger;
 	var sellId = engine.submitOrder({quantity: "-3", price: "2.5"});
 
 	assert.equal(matchCount, 3, "Three matches should have occurred.");
@@ -274,7 +273,6 @@ tests.multipleLevelsOfMarketData = function() {
 	engine.submitOrder({quantity: "3", price: "2.5"});
 	engine.submitOrder({quantity: "3", price: "2.5"});
 	engine.submitOrder({quantity: "3", price: "2.5"});
-	debugger;
 	engine.submitOrder({quantity: "2", price: "2.4"});
 	engine.submitOrder({quantity: "-3", price: "2.6"});
 
@@ -293,7 +291,15 @@ tests.multipleLevelsOfMarketData = function() {
 	assert.equal(2.4, bids[1].price);
 	assert.equal(2.6, offers[0].price);
 };
+tests.marketDataStripsOrderInformation = function() {
+	var engine = matchEngine.createEngine();
+	engine.submitOrder({quantity: "3", price: "2.5"});
 
+	var marketData = engine.getMarketData();
+	var bids = marketData.bids;
+	
+	assert.ok(!bids[0].id);
+};
 
 for (var test in tests) {
 	if (tests.hasOwnProperty(test) && (typeof tests[test] == 'function')) {

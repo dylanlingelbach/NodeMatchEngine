@@ -186,11 +186,16 @@ var createEngine = function createEngine() {
 		var levelReduce = function(order1, order2) { 
 			return { 
 				quantity: 	order1.quantity + order2.quantity, 
-				price: 		order1.price}
-			};
-		var levelConverter = function(level) { return level.reduce(levelReduce) };
-
-		debugger;
+				price: 		order1.price
+			}
+		};
+		var levelConverter = function(level) {
+			if (!level) return [];
+			if (level.length == 1) {
+				return { quantity: level[0].quantity, price: level[0].price };
+			}
+			return level.reduce(levelReduce) 
+		};
 		var bids = this.bids.map(levelConverter);
 		var offers = this.offers.map(levelConverter);
 

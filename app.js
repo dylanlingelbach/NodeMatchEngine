@@ -6,7 +6,21 @@
 var express = require('express')
   , routes = require('./routes')
   , http = require('http')
-  , path = require('path');
+  , path = require('path')
+  , matchEngine = require('./MatchEngine.js');
+
+var engineRegistry = (function() {
+  var registry = {};
+  return {
+    getEngine: function(contract) {
+      var engine = registry[contract];
+      if (!engine) {
+        registry[contract] = engine = matchEngine.createEngine();
+      }
+      return engine;
+    }
+  };
+})();
 
 var app = express();
 
@@ -32,10 +46,33 @@ app.configure('development', function(){
 app.get('/', routes.index);
 app.get(/^\/match\/(\w+)$/, function(req, res) {
   var contract = req.params[0];
-  console.log("Received request for " + contract);
-  res.write("Received request for " + contract);
-  res.end();
-})
+  var engine = engineRegistry.getEngine(contract);
+  var renderMarketData = function(level) {
+    if (!level)
+      return '';
+    return level.quantity + '\t\t @ \t\t' + new Number(level.price).toFixed(2);
+  };
+  console.log(req.session);
+  res.render('match', { title: contract + ' match engine', contract: contract, engine: engine, render: renderMarketData, orders: req.session.orders || []});
+});
+
+app.get(/^\/cancel\/(\w+)\/(\d+)$/, function(req, res) {
+  var contract = req.params[0];
+  var id = req.params[1];
+  var engine = engineRegistry.getEngine(contract);
+  engine.cancelOrder(id);
+  res.redirect('/match/'+contract);
+});
+
+app.post(/^\/match\/(\w+)$/, function(req, res) {
+  var contract = req.params[0];
+  var engine = engineRegistry.getEngine(contract);
+  if (!req.session.orders)
+    req.session.orders = [];
+  var id = engine.submitOrder(req.body);
+  req.session.orders.push({id: id, quantity: req.body.quantity, price: req.body.price});
+  res.redirect('/match/'+contract);
+});
 
 http.createServer(app).listen(app.get('port'), function(){
   console.log("Express server listening on port " + app.get('port'));

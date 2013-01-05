@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= title %></title>
+    <link rel='stylesheet' href='/stylesheets/style.css' />
+  </head>
+  <body>
+    <h1>Market data for <%= contract %></h1>
+    <table>
+    	<tr>
+    		<td><b>Bids</b></td>
+    		<td>&emsp;&emsp;&emsp;</td>
+    		<td><b>Offers</b></td>
+    	</tr>
+		<% 
+			var marketData = engine.getMarketData();
+			for(var i=0; i<Math.max(marketData.bids.length, marketData.offers.length); i++) {%>
+		    <tr>
+   				<td><%= render(marketData.bids[i]) %></td>
+    			<td></td>
+   				<td><%= render(marketData.offers[i]) %></td>
+			</tr>
+		<% } %>
+    </table>
+    <hr>
+    <form action=<%='/match/' + contract %> method="post">
+  		Price:&emsp;&emsp;&emsp;<input type="text" name="price"><br>
+  		Quantity:&nbsp;&emsp;<input type="text" name="quantity"><br>
+  		<input type="submit" value="Submit">
+	</form>
+	<hr>
+	<table>
+		<tr>
+			<td><b>ID</b></td>
+    		<td>&emsp;&emsp;&emsp;</td>
+			<td><b>Price</b></td>
+    		<td>&emsp;&emsp;&emsp;</td>
+			<td><b>Working Quantity</b></td>
+    		<td>&emsp;&emsp;&emsp;</td>
+			<td><b>Original Quantity</b></td>
+    		<td>&emsp;&emsp;&emsp;</td>
+			<td><b>Status</b></td>
+			<td>&emsp;&emsp;&emsp;</td>
+			<td><b></b></td>
+		</tr>
+		<% for (var i=0; i<orders.length; i++) {
+			var status = engine.getStatus(orders[i].id); %>
+			<tr>
+				<td><%= orders[i].id %></td>
+    			<td></td>
+				<td><%= new Number(orders[i].price).toFixed(2) %></td>
+    			<td></td>
+				<td><%= status.workingQuantity %></td>
+    			<td></td>
+				<td><%= orders[i].quantity %></td>
+    			<td></td>
+				<td><%= status.status %></td>
+				<td></td>
+				<td><a href='/cancel/<%= contract%>/<%= orders[i].id %>'>Cancel</td>
+			</tr>
+		<% } %>
+	</table>
+  </body>
+</html>
